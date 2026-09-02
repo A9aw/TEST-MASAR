@@ -32,6 +32,8 @@ st.markdown("""
 def init_db():
     conn = sqlite3.connect("masar_streamlit_v1.db")
     cursor = conn.cursor()
+    
+    # Users Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY, 
@@ -57,6 +59,7 @@ def init_db():
         ]
         cursor.executemany("INSERT OR IGNORE INTO users VALUES (?, ?, ?, ?, ?, ?, ?, ?)", default_users)
     
+    # Master Database Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS master_database (
             id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -71,18 +74,28 @@ def init_db():
     if cursor.fetchone()[0] == 0:
         default_records = [
             ('Acme Corp', 'Client', 'Active', 'contact@acmecorp.com', 'Strategic partnership in technology'),
-            ('Global Logistics', 'Vendor', 'Pending', 'info@globallogistics.com', 'Supply chain consultancy provider')
+            ('Global Logistics', 'Vendor', 'Pending', 'info@globallogistics.com', 'Supply chain consultancy provider'),
+            ('Al-Rehab Hub', 'Partner', 'Active', 'hub@rehab.com', 'Local operational development')
         ]
         cursor.executemany("INSERT INTO master_database (name, category, status, contact_info, notes) VALUES (?, ?, ?, ?, ?)", default_records)
+
+    # Tasks Table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_title TEXT,
+            assigned_to TEXT,
+            priority TEXT,
+            status TEXT,
+            deadline TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
 init_db()
 
-def get_cairo_time():
-    cairo_tz = pytz.timezone('Africa/Cairo')
-    return datetime.now(cairo_tz).strftime("%Y-%m-%d %H:%M:%S")
-
+# Session States
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
     st.session_state.username = ""
@@ -91,7 +104,7 @@ if "authenticated" not in st.session_state:
 
 if not st.session_state.authenticated:
     st.markdown('<div class="main-header">MASAR for Consultancy and Business Development</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Secure Enterprise Login Portal</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Secure Enterprise Management Portal</div>', unsafe_allow_html=True)
     
     with st.form("login_form"):
         role_choice = st.selectbox("Select Role Designation", ["Founder", "CEO", "AMOM", "SSA", "GAA", "SGA", "SPM"])
@@ -121,6 +134,9 @@ if not st.session_state.authenticated:
         * **CEO**: `ceo_user` | `MasarCEO#88`
         * **AMOM**: `amom_user` | `AmomOffice@2026`
         * **SSA**: `ssa_user` | `SSA_Support*99`
+        * **GAA**: `gaa_user` | `GAA_Gov#55`
+        * **SGA**: `sga_user` | `SGA_Acc#33`
+        * **SPM**: `spm_user` | `SPM_Proj*77`
         """)
 else:
     st.sidebar.markdown("### MASAR Portal")
@@ -128,7 +144,7 @@ else:
     st.sidebar.markdown(f"**Role:** {st.session_state.role_code}")
     st.sidebar.markdown("---")
     
-    page = st.sidebar.radio("Navigation Menu", ["Master Database", "Profile"])
+    page = st.sidebar.radio("Navigation Menu", ["Master Database", "Task Management", "Management Control", "Profile"])
     
     if st.sidebar.button("Sign Out"):
         st.session_state.authenticated = False
@@ -136,10 +152,76 @@ else:
         
     if page == "Master Database":
         st.markdown('<div class="main-header">Master Database Hub</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-header">Central repository for clients, vendors, and partners.</div>', unsafe_allow_html=True)
+        
         conn = sqlite3.connect("masar_streamlit_v1.db")
         df = pd.read_sql_query("SELECT * FROM master_database", conn)
         conn.close()
         st.dataframe(df, use_container_width=True)
+        
+        if st.session_state.role_code in ["Founder", "CEO", "AMOM"]:
+            st.markdown("---")
+            st.subheader("Add New Record")
+            with st.form("add_record_form"):
+                n_name = st.text_input("Entity / Name")
+                n_category = st.selectbox("Category", ["Client", "Vendor", "Partner", "Government Entity"])
+                n_status = st.selectbox("Status", ["Active", "Pending", "Archived"])
+                n_contact = st.text_input("Contact Info")
+                n_notes = st.text_area("Notes")
+                submitted = st.form_submit_button("Save Record")
+                
+                if submitted and n_name:
+                    conn = sqlite3.connect("masar_streamlit_v1.db")
+                    cursor = conn.cursor()
+                    cursor.execute("INSERT INTO master_database (name, category, status, contact_info, notes) VALUES (?, ?, ?, ?, ?)", 
+                                   (n_name, n_category, n_status, n_contact, n_notes))
+                    conn.commit()
+                    conn.close()
+                    st.success("Record added successfully!")
+                    st.rerun()
+
+    elif page == "Task Management":
+        st.markdown('<div class="main-header">Task & Operations Manager</div>', unsafe_allow_html=True)
+        conn = sqlite3.connect("masar_streamlit_v1.db")
+        tasks_df = pd.read_sql_query("SELECT * FROM tasks", conn)
+        conn.close()
+        
+        if not tasks_df.empty:
+            st.dataframe(tasks_df, use_container_width=True)
+        else:
+            st.info("No tasks currently recorded.")
+            
+        st.markdown("---")
+        st.subheader("Assign New Task")
+        with st.form("task_form"):
+            t_title = st.text_input("Task Description")
+            t_assignee = st.selectbox("Assign To", ["Founder", "CEO", "AMOM", "SSA", "GAA", "SGA", "SPM"])
+            t_priority = st.selectbox("Priority", ["Normal", "High", "Critical"])
+            t_deadline = st.text_input("Deadline (YYYY-MM-DD)")
+            t_submit = st.form_submit_button("Create Task")
+            
+            if t_submit and t_title:
+                conn = sqlite3.connect("masar_streamlit_v1.db")
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO tasks (task_title, assigned_to, priority, status, deadline) VALUES (?, ?, ?, ?, ?)",
+                               (t_title, t_assignee, t_priority, "Pending", t_deadline))
+                conn.commit()
+                conn.close()
+                st.success("Task created successfully!")
+                st.rerun()
+
+    elif page == "Management Control":
+        if st.session_state.role_code in ["Founder", "CEO"]:
+            st.markdown('<div class="main-header">Executive Administration Control Panel</div>', unsafe_allow_html=True)
+            conn = sqlite3.connect("masar_streamlit_v1.db")
+            users_df = pd.read_sql_query("SELECT role_code AS 'Role Code', username AS 'Username', full_name AS 'Full Name', department AS 'Department' FROM users", conn)
+            conn.close()
+            st.dataframe(users_df, use_container_width=True)
+        else:
+            st.error("Access Restricted: Executive clearance required for Management Control.")
+
     elif page == "Profile":
-        st.markdown('<div class="main-header">Profile Information</div>', unsafe_allow_html=True)
-        st.write(f"Logged in as: {st.session_state.username}")
+        st.markdown('<div class="main-header">User Profile & Session Details</div>', unsafe_allow_html=True)
+        st.write(f"**Username:** {st.session_state.username}")
+        st.write(f"**Full Name:** {st.session_state.full_name}")
+        st.write(f"**Assigned Role:** {st.session_state.role_code}")
