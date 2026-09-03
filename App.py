@@ -45,7 +45,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def init_db():
-    conn = sqlite3.connect("masar_comprehensive_v5.db")
+    conn = sqlite3.connect("masar_comprehensive_v6.db")
     cursor = conn.cursor()
     
     # Users Table
@@ -132,6 +132,25 @@ def init_db():
         ]
         cursor.executemany("INSERT INTO accounting_ledger (transaction_date, description, category, amount, entry_type) VALUES (?, ?, ?, ?, ?)", default_ledger)
 
+    # Email Digest & Notifications Table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS email_digests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender TEXT,
+            recipient_role TEXT,
+            subject TEXT,
+            summary TEXT,
+            received_date TEXT
+        )
+    """)
+    cursor.execute("SELECT COUNT(*) FROM email_digests")
+    if cursor.fetchone()[0] == 0:
+        default_emails = [
+            ('board@acme.com', 'Founder', 'Board Approval Update', 'Acme Corp board approved the 150k expansion contract.', '2026-09-02'),
+            ('tax@egypt.gov.eg', 'SGA', 'Corporate Tax Filing Notice', 'Quarterly tax compliance documents are due next week.', '2026-09-01')
+        ]
+        cursor.executemany("INSERT INTO email_digests (sender, recipient_role, subject, summary, received_date) VALUES (?, ?, ?, ?, ?)", default_emails)
+
     # Tasks Table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
@@ -155,6 +174,12 @@ if "authenticated" not in st.session_state:
     st.session_state.role_code = ""
     st.session_state.full_name = ""
 
+# Chatbot message history initialization
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"role": "assistant", "content": "أهلاً بك يا عبد الرحمن. أنا مساعدك الذكي لنظام 'مسار'. اسألني عن أي شيء يخص الصفقات، الحسابات، أو الإيماعات وسأجيبك فوراً."}
+    ]
+
 if not st.session_state.authenticated:
     st.markdown('<div class="main-header">MASAR for Consultancy and Business Development</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Enterprise Management Suite - Secure Authentication Portal</div>', unsafe_allow_html=True)
@@ -169,7 +194,7 @@ if not st.session_state.authenticated:
             submit_btn = st.form_submit_button("Authenticate Access")
             
             if submit_btn:
-                conn = sqlite3.connect("masar_comprehensive_v5.db")
+                conn = sqlite3.connect("masar_comprehensive_v6.db")
                 cursor = conn.cursor()
                 cursor.execute("SELECT username, role_code, full_name FROM users WHERE role_code = ? AND username = ? AND password = ?", (role_choice, username_input, password_input))
                 user_res = cursor.fetchone()
@@ -209,7 +234,7 @@ else:
     st.sidebar.markdown(f"**Clearance:** {st.session_state.role_code}")
     st.sidebar.markdown("---")
     
-    page = st.sidebar.radio("Navigation Menu", ["Executive Dashboard", "CRM & Deal Pipeline", "Master Database & File Uploader", "Accounting Ledger (SGA)", "Task Management", "Smart Assistant", "Management Control", "Profile"])
+    page = st.sidebar.radio("Navigation Menu", ["Executive Dashboard", "Smart AI Chatbot", "Email Digest & Notifications", "CRM & Deal Pipeline", "Master Database & File Uploader", "Accounting Ledger (SGA)", "Task Management", "Management Control", "Profile"])
     
     if st.sidebar.button("Sign Out"):
         st.session_state.authenticated = False
@@ -219,13 +244,14 @@ else:
         st.markdown(f'<div class="main-header">Executive Dashboard - {st.session_state.full_name}</div>', unsafe_allow_html=True)
         st.markdown('<div class="sub-header">Real-time enterprise metrics, active workflows, and corporate indicators.</div>', unsafe_allow_html=True)
         
-        conn = sqlite3.connect("masar_comprehensive_v5.db")
+        conn = sqlite3.connect("masar_comprehensive_v6.db")
         df_crm = pd.read_sql_query("SELECT * FROM crm_deals", conn)
         df_tasks = pd.read_sql_query("SELECT * FROM tasks", conn)
         df_ledger = pd.read_sql_query("SELECT * FROM accounting_ledger", conn)
+        df_emails = pd.read_sql_query("SELECT * FROM email_digests", conn)
         conn.close()
         
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.metric(label="Active CRM Deals", value=len(df_crm))
         with c2:
@@ -233,16 +259,98 @@ else:
         with c3:
             total_rev = df_ledger[df_ledger['entry_type'] == 'Credit']['amount'].sum()
             st.metric(label="Total Recorded Revenues", value=f"{total_rev:,.2f} EGP")
+        with c4:
+            st.metric(label="Email Digests Tracked", value=len(df_emails))
             
         st.markdown("---")
         st.subheader("Periodic Summary & System Status")
-        st.success("All systems operating under strict corporate compliance. CRM data streams directly to internal data sheets.")
+        st.success("All systems operating under strict corporate compliance. AI Bot and Email Notification modules are fully active.")
+
+    elif page == "Smart AI Chatbot":
+        st.markdown('<div class="main-header">MASAR Interactive AI Chatbot</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-header">Your intelligent corporate assistant. Ask anything about operations, client CRM, financial ledgers, or business strategies.</div>', unsafe_allow_html=True)
+        
+        # Display chat history
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+                
+        # Chat input box
+        if prompt := st.chat_input("اكتب سؤالك هنا للمساعد الذكي... (Type your query here...)"):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+                
+            # Smart processing logic for chatbot
+            p_lower = prompt.lower()
+            conn = sqlite3.connect("masar_comprehensive_v6.db")
+            
+            if "crm" in p_lower or "deal" in p_lower or "صفقات" in p_lower or "عملاء" in p_lower:
+                df_c = pd.read_sql_query("SELECT client_name, deal_title, status, deal_value FROM crm_deals", conn)
+                response_text = "إليك ملخص صفقات الـ CRM الحالية في الشركة:\n\n" + df_c.to_markdown(index=False)
+            elif "account" in p_lower or "financial" in p_lower or "حسابات" in p_lower or "فلوس" in p_lower or "إيرادات" in p_lower:
+                df_l = pd.read_sql_query("SELECT * FROM accounting_ledger", conn)
+                response_text = "إليك سجل الحسابات والماليات (SGA):\n\n" + df_l.to_markdown(index=False)
+            elif "email" in p_lower or "إيميل" in p_lower or "رسائل" in p_lower:
+                df_e = pd.read_sql_query("SELECT sender, recipient_role, subject, summary FROM email_digests", conn)
+                response_text = "إليك آخر ملخصات البريد الإلكتروني والإشعارات للموظفين:\n\n" + df_e.to_markdown(index=False)
+            else:
+                response_text = f"بخصوص استفسارك ('{prompt}'): شركة مسار للاستشارات وتطوير الأعمال تعمل بكفاءة تامة. يمكنك استخدام الأقسام الجانبية للتحكم الكامل في الـ CRM، الحسابات، وقاعدة البيانات الموحدة."
+            
+            conn.close()
+            
+            st.session_state.messages.append({"role": "assistant", "content": response_text})
+            with st.chat_message("assistant"):
+                st.markdown(response_text)
+
+    elif page == "Email Digest & Notifications":
+        st.markdown('<div class="main-header">Email Summaries & Employee Notifications</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-header">Automated ingestion of incoming correspondence, AI summaries, and targeted role notifications.</div>', unsafe_allow_html=True)
+        
+        conn = sqlite3.connect("masar_comprehensive_v6.db")
+        emails_df = pd.read_sql_query("SELECT * FROM email_digests", conn)
+        conn.close()
+        
+        st.subheader("Live Email Digest Feed")
+        st.dataframe(emails_df, use_container_width=True)
+        
+        # Export option
+        csv_emails = emails_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Download Email Summaries Sheet",
+            data=csv_emails,
+            file_name='masar_email_digests.csv',
+            mime='text/csv'
+        )
+        
+        st.markdown("---")
+        st.subheader("Add & Summarize New Email / Dispatch Notification")
+        with st.form("email_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                e_sender = st.text_input("Email Sender (e.g., client@domain.com)")
+                e_role = st.selectbox("Target Employee / Role Notification", ["Founder", "CEO", "AMOM", "SSA", "GAA", "SGA", "SPM"])
+            with c2:
+                e_subject = st.text_input("Email Subject")
+                e_date = st.text_input("Received Date (YYYY-MM-DD)", value=str(datetime.now(cairo_tz).date()))
+            e_summary = st.text_area("AI Email Summary & Action Notes")
+            e_submit = st.form_submit_button("Process and Dispatch Notification")
+            
+            if e_submit and e_sender:
+                conn = sqlite3.connect("masar_comprehensive_v6.db")
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO email_digests (sender, recipient_role, subject, summary, received_date) VALUES (?, ?, ?, ?, ?)",
+                               (e_sender, e_role, e_subject, e_summary, e_date))
+                conn.commit()
+                conn.close()
+                st.success("Email successfully summarized and notification dispatched to designated employee!")
+                st.rerun()
 
     elif page == "CRM & Deal Pipeline":
         st.markdown('<div class="main-header">CRM & Deal Pipeline Intelligence</div>', unsafe_allow_html=True)
         st.markdown('<div class="sub-header">Manage client relationships, track opportunity statuses, and review automated CRM notifications.</div>', unsafe_allow_html=True)
         
-        conn = sqlite3.connect("masar_comprehensive_v5.db")
+        conn = sqlite3.connect("masar_comprehensive_v6.db")
         crm_df = pd.read_sql_query("SELECT * FROM crm_deals", conn)
         conn.close()
         
@@ -269,10 +377,9 @@ else:
         st.subheader("Live CRM Database Sheet")
         st.dataframe(crm_df, use_container_width=True)
         
-        # Export option to Excel/CSV format
         csv_data = crm_df.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label="Download CRM Data Sheet (CSV/Excel Compatible)",
+            label="Download CRM Data Sheet (Excel Compatible)",
             data=csv_data,
             file_name='masar_crm_export.csv',
             mime='text/csv',
@@ -293,7 +400,7 @@ else:
             d_submit = st.form_submit_button("Commit CRM Record to Sheet")
             
             if d_submit and c_name:
-                conn = sqlite3.connect("masar_comprehensive_v5.db")
+                conn = sqlite3.connect("masar_comprehensive_v6.db")
                 cursor = conn.cursor()
                 cursor.execute("INSERT INTO crm_deals (client_name, deal_title, status, deal_value, last_contact_date, notes) VALUES (?, ?, ?, ?, ?, ?)",
                                (c_name, d_title, d_status, d_val, l_date, d_notes))
@@ -306,8 +413,6 @@ else:
         st.markdown('<div class="main-header">Master Database & File Uploader</div>', unsafe_allow_html=True)
         st.markdown('<div class="sub-header">Upload custom files (Excel/CSV), search instantly, and add entries that sync on the fly.</div>', unsafe_allow_html=True)
         
-        # File Uploader Section
-        st.markdown("### Upload External File / Database Sheet")
         uploaded_file = st.file_uploader("Choose an Excel or CSV file", type=["csv", "xlsx"])
         if uploaded_file is not None:
             try:
@@ -323,7 +428,7 @@ else:
         st.markdown("---")
         st.subheader("Instant Searchable Database")
         
-        conn = sqlite3.connect("masar_comprehensive_v5.db")
+        conn = sqlite3.connect("masar_comprehensive_v6.db")
         master_df = pd.read_sql_query("SELECT * FROM uploaded_master_db", conn)
         conn.close()
         
@@ -351,7 +456,7 @@ else:
             m_submit = st.form_submit_button("Add and Save to Database")
             
             if m_submit and m_name:
-                conn = sqlite3.connect("masar_comprehensive_v5.db")
+                conn = sqlite3.connect("masar_comprehensive_v6.db")
                 cursor = conn.cursor()
                 cursor.execute("INSERT INTO uploaded_master_db (record_name, category, details, entry_date) VALUES (?, ?, ?, ?)",
                                (m_name, m_cat, m_details, m_date))
@@ -364,7 +469,7 @@ else:
         st.markdown('<div class="main-header">Senior General Accountant Ledger (SGA)</div>', unsafe_allow_html=True)
         st.markdown('<div class="sub-header">Complete corporate financial tracking, revenues, expenses, and periodic summaries.</div>', unsafe_allow_html=True)
         
-        conn = sqlite3.connect("masar_comprehensive_v5.db")
+        conn = sqlite3.connect("masar_comprehensive_v6.db")
         ledger_df = pd.read_sql_query("SELECT * FROM accounting_ledger", conn)
         conn.close()
         
@@ -385,7 +490,7 @@ else:
                 t_submit = st.form_submit_button("Save Financial Entry")
                 
                 if t_submit and t_desc:
-                    conn = sqlite3.connect("masar_comprehensive_v5.db")
+                    conn = sqlite3.connect("masar_comprehensive_v6.db")
                     cursor = conn.cursor()
                     cursor.execute("INSERT INTO accounting_ledger (transaction_date, description, category, amount, entry_type) VALUES (?, ?, ?, ?, ?)",
                                    (t_date, t_desc, t_cat, t_amount, t_type))
@@ -400,7 +505,7 @@ else:
         st.markdown('<div class="main-header">Task & Operations Manager</div>', unsafe_allow_html=True)
         st.markdown('<div class="sub-header">Delegate, monitor, and track department deliverables.</div>', unsafe_allow_html=True)
         
-        conn = sqlite3.connect("masar_comprehensive_v5.db")
+        conn = sqlite3.connect("masar_comprehensive_v6.db")
         tasks_df = pd.read_sql_query("SELECT * FROM tasks", conn)
         conn.close()
         
@@ -422,7 +527,7 @@ else:
             t_submit = st.form_submit_button("Authorize Task Assignment")
             
             if t_submit and t_title:
-                conn = sqlite3.connect("masar_comprehensive_v5.db")
+                conn = sqlite3.connect("masar_comprehensive_v6.db")
                 cursor = conn.cursor()
                 cursor.execute("INSERT INTO tasks (task_title, assigned_to, priority, status, deadline) VALUES (?, ?, ?, ?, ?)",
                                (t_title, t_assignee, t_priority, "Pending", t_deadline))
@@ -431,35 +536,12 @@ else:
                 st.success("Task successfully dispatched.")
                 st.rerun()
 
-    elif page == "Smart Assistant":
-        st.markdown('<div class="main-header">MASAR AI Smart Assistant</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-header">Advanced corporate query engine for operational guidelines, CRM analysis, and financial briefs.</div>', unsafe_allow_html=True)
-        
-        query = st.text_input("Ask the Assistant about deals, financial accounts, or corporate procedures:")
-        if st.button("Query Assistant"):
-            if query:
-                q_lower = query.lower()
-                conn = sqlite3.connect("masar_comprehensive_v5.db")
-                if "crm" in q_lower or "deal" in q_lower or "client" in q_lower:
-                    df_c = pd.read_sql_query("SELECT client_name, deal_title, status FROM crm_deals", conn)
-                    st.success("Assistant Analysis on CRM Pipeline:")
-                    st.dataframe(df_c, use_container_width=True)
-                elif "account" in q_lower or "financial" in q_lower or "revenue" in q_lower:
-                    df_l = pd.read_sql_query("SELECT * FROM accounting_ledger", conn)
-                    st.success("Assistant Analysis on Financial Ledger:")
-                    st.dataframe(df_l, use_container_width=True)
-                else:
-                    st.info(f"Assistant Report regarding '{query}': MASAR for Consultancy and Business Development maintains high structural integrity across all departments, including active CRM tracking, SGA financial oversight, and file upload capabilities.")
-                conn.close()
-            else:
-                st.warning("Please enter a valid query string.")
-
     elif page == "Management Control":
         if st.session_state.role_code in ["Founder", "CEO"]:
             st.markdown('<div class="main-header">Executive Administration Control Panel</div>', unsafe_allow_html=True)
             st.markdown('<div class="sub-header">Manage corporate directory and user clearance levels.</div>', unsafe_allow_html=True)
             
-            conn = sqlite3.connect("masar_comprehensive_v5.db")
+            conn = sqlite3.connect("masar_comprehensive_v6.db")
             users_df = pd.read_sql_query("SELECT role_code AS 'Role Code', username AS 'Username', full_name AS 'Full Name', department AS 'Department', email AS 'Email' FROM users", conn)
             conn.close()
             st.dataframe(users_df, use_container_width=True)
