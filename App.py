@@ -1,556 +1,1814 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from datetime import datetime
-import pytz
+import plotly.express as px
+from datetime import date
+from pathlib import Path
+import io
 
-st.set_page_config(
-    page_title="MASAR | Enterprise Management Suite",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# ============================================================
+# MASAR INTELLIGENCE OS
+# ============================================================
 
-st.markdown("""
-<style>
-    html, body, [class*="css"] {
-        font-family: 'Times New Roman', Times, serif;
-    }
-    .main-header {
-        font-size: 28px;
-        font-weight: bold;
-        color: #0F2C59;
-        border-bottom: 2px solid #0F2C59;
-        padding-bottom: 6px;
-        margin-bottom: 15px;
-    }
-    .sub-header {
-        font-size: 16px;
-        color: #555555;
-        margin-bottom: 20px;
-    }
-    .stButton>button {
-        background-color: #0F2C59;
-        color: white;
-        font-family: 'Times New Roman', Times, serif;
-        border-radius: 4px;
-        border: none;
-        padding: 8px 16px;
-        font-weight: bold;
-    }
-    .stButton>button:hover {
-        background-color: #1d4ed8;
-        color: white;
-    }
-</style>
-""", unsafe_allow_html=True)
+APP_NAME = "MASAR Intelligence OS"
+COMPANY_NAME = "MASAR for Consultancy and Business Development"
 
-def init_db():
-    conn = sqlite3.connect("masar_comprehensive_v6.db")
+NAVY = "#0B1E36"
+BLUE = "#38BDF8"
+SLATE = "#64748B"
+SLATE_BLUE = "#1E3A8A"
+BG = "#F4F7FA"
+
+DB_PATH = "masar.db"
+
+
+# ============================================================
+# DATABASE
+# ============================================================
+
+def get_db():
+
+    conn = sqlite3.connect(DB_PATH)
+
+    conn.row_factory = sqlite3.Row
+
+    return conn
+
+
+def init_database():
+
+    conn = get_db()
+
     cursor = conn.cursor()
-    
-    # Users Table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY, 
-            username TEXT UNIQUE, 
-            password TEXT, 
-            role_code TEXT, 
-            full_name TEXT, 
-            email TEXT, 
-            phone TEXT, 
-            department TEXT
-        )
-    """)
-    cursor.execute("SELECT COUNT(*) FROM users")
-    if cursor.fetchone()[0] == 0:
-        default_users = [
-            (1, 'founder_admin', 'MasarFnd2026!', 'Founder', 'Founder & Managing Director', 'founder@masar-consultancy.com', '+20 100 000 0001', 'Executive Management'),
-            (2, 'ceo_user', 'MasarCEO#88', 'CEO', 'Chief Executive Officer', 'ceo@masar-consultancy.com', '+20 100 000 0002', 'Executive Management'),
-            (3, 'amom_user', 'AmomOffice@2026', 'AMOM', 'Admin Manager and Office Manager', 'amom@masar-consultancy.com', '+20 100 000 0003', 'Administration'),
-            (4, 'ssa_user', 'SSA_Support*99', 'SSA', 'Sales Support Advisor', 'ssa@masar-consultancy.com', '+20 100 000 0004', 'Sales & Support'),
-            (5, 'gaa_user', 'GAA_Gov#55', 'GAA', 'Government Affairs Advisor', 'gaa@masar-consultancy.com', '+20 100 000 0005', 'Government Relations'),
-            (6, 'sga_user', 'SGA_Acc#33', 'SGA', 'Senior General Accountant', 'sga@masar-consultancy.com', '+20 100 000 0006', 'Finance & Accounting'),
-            (7, 'spm_user', 'SPM_Proj*77', 'SPM', 'Special Projects Manager', 'spm@masar-consultancy.com', '+20 100 000 0007', 'Projects')
-        ]
-        cursor.executemany("INSERT OR IGNORE INTO users VALUES (?, ?, ?, ?, ?, ?, ?, ?)", default_users)
-    
-    # CRM Deals & Clients Table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS crm_deals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_name TEXT,
-            deal_title TEXT,
-            status TEXT,
-            deal_value REAL,
-            last_contact_date TEXT,
-            notes TEXT
-        )
-    """)
-    cursor.execute("SELECT COUNT(*) FROM crm_deals")
-    if cursor.fetchone()[0] == 0:
-        default_deals = [
-            ('Acme Corp', 'Enterprise Tech Expansion', 'Open', 150000.0, '2026-08-10', 'Awaiting final board approval on contract terms.'),
-            ('Global Logistics', 'Supply Chain Consulting', 'Pending', 85000.0, '2026-06-15', 'Initial meetings concluded. Follow-up required.'),
-            ('Al-Rehab Hub', 'Local Operations Upgrade', 'Closed-Won', 200000.0, '2026-09-01', 'Contract successfully executed and implemented.')
-        ]
-        cursor.executemany("INSERT INTO crm_deals (client_name, deal_title, status, deal_value, last_contact_date, notes) VALUES (?, ?, ?, ?, ?, ?)", default_deals)
 
-    # Master Uploaded Database Table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS uploaded_master_db (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            record_name TEXT,
-            category TEXT,
-            details TEXT,
-            entry_date TEXT
-        )
-    """)
-    cursor.execute("SELECT COUNT(*) FROM uploaded_master_db")
-    if cursor.fetchone()[0] == 0:
-        default_master = [
-            ('Strategic Partner Alpha', 'Partnership', 'Primary regional coordinator', '2026-01-10'),
-            ('Government Liaison Unit', 'Government', 'Compliance and licensing division', '2026-02-15')
-        ]
-        cursor.executemany("INSERT INTO uploaded_master_db (record_name, category, details, entry_date) VALUES (?, ?, ?, ?)", default_master)
+    cursor.executescript("""
 
-    # Accounting Ledger (SGA)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS accounting_ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            transaction_date TEXT,
-            description TEXT,
-            category TEXT,
-            amount REAL,
-            entry_type TEXT
-        )
-    """)
-    cursor.execute("SELECT COUNT(*) FROM accounting_ledger")
-    if cursor.fetchone()[0] == 0:
-        default_ledger = [
-            ('2026-09-01', 'Initial Advisory Retainer - Acme Corp', 'Revenue', 50000.0, 'Credit'),
-            ('2026-09-02', 'Software Subscriptions & Cloud Infra', 'Expense', 12000.0, 'Debit')
-        ]
-        cursor.executemany("INSERT INTO accounting_ledger (transaction_date, description, category, amount, entry_type) VALUES (?, ?, ?, ?, ?)", default_ledger)
+    CREATE TABLE IF NOT EXISTS companies (
 
-    # Email Digest & Notifications Table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS email_digests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sender TEXT,
-            recipient_role TEXT,
-            subject TEXT,
-            summary TEXT,
-            received_date TEXT
-        )
-    """)
-    cursor.execute("SELECT COUNT(*) FROM email_digests")
-    if cursor.fetchone()[0] == 0:
-        default_emails = [
-            ('board@acme.com', 'Founder', 'Board Approval Update', 'Acme Corp board approved the 150k expansion contract.', '2026-09-02'),
-            ('tax@egypt.gov.eg', 'SGA', 'Corporate Tax Filing Notice', 'Quarterly tax compliance documents are due next week.', '2026-09-01')
-        ]
-        cursor.executemany("INSERT INTO email_digests (sender, recipient_role, subject, summary, received_date) VALUES (?, ?, ?, ?, ?)", default_emails)
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-    # Tasks Table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_title TEXT,
-            assigned_to TEXT,
-            priority TEXT,
-            status TEXT,
-            deadline TEXT
-        )
+        name TEXT NOT NULL,
+
+        industry TEXT,
+
+        website TEXT,
+
+        phone TEXT,
+
+        email TEXT,
+
+        status TEXT DEFAULT 'Prospect',
+
+        priority TEXT DEFAULT 'Medium',
+
+        notes TEXT,
+
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+
+    );
+
+
+    CREATE TABLE IF NOT EXISTS opportunities (
+
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        company_id INTEGER,
+
+        title TEXT NOT NULL,
+
+        stage TEXT DEFAULT 'Lead',
+
+        value REAL DEFAULT 0,
+
+        probability REAL DEFAULT 0,
+
+        next_action TEXT,
+
+        next_date TEXT,
+
+        notes TEXT,
+
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY(company_id)
+
+        REFERENCES companies(id)
+
+    );
+
+
+    CREATE TABLE IF NOT EXISTS followups (
+
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        company_id INTEGER,
+
+        title TEXT NOT NULL,
+
+        due_date TEXT,
+
+        status TEXT DEFAULT 'Open',
+
+        priority TEXT DEFAULT 'Medium',
+
+        notes TEXT,
+
+        FOREIGN KEY(company_id)
+
+        REFERENCES companies(id)
+
+    );
+
+
+    CREATE TABLE IF NOT EXISTS governance (
+
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        item_type TEXT NOT NULL,
+
+        title TEXT NOT NULL,
+
+        owner TEXT,
+
+        approval_date TEXT,
+
+        review_date TEXT,
+
+        status TEXT DEFAULT 'Active',
+
+        notes TEXT
+
+    );
+
     """)
-    
+
     conn.commit()
+
     conn.close()
 
-init_db()
 
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-    st.session_state.username = ""
-    st.session_state.role_code = ""
-    st.session_state.full_name = ""
+def fetch(query, params=()):
 
-# Chatbot message history initialization
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": "أهلاً بك يا عبد الرحمن. أنا مساعدك الذكي لنظام 'مسار'. اسألني عن أي شيء يخص الصفقات، الحسابات، أو الإيماعات وسأجيبك فوراً."}
+    conn = get_db()
+
+    df = pd.read_sql_query(
+
+        query,
+
+        conn,
+
+        params=params
+
+    )
+
+    conn.close()
+
+    return df
+
+
+def execute(query, params=()):
+
+    conn = get_db()
+
+    conn.execute(query, params)
+
+    conn.commit()
+
+    conn.close()
+
+
+# ============================================================
+# UI
+# ============================================================
+
+def inject_css():
+
+    st.markdown(
+
+        f"""
+
+        <style>
+
+        .stApp {{
+
+            background: {BG};
+
+        }}
+
+
+        [data-testid="stSidebar"] {{
+
+            background: {NAVY};
+
+        }}
+
+
+        [data-testid="stSidebar"] * {{
+
+            color: white !important;
+
+        }}
+
+
+        .masar-hero {{
+
+            background:
+
+            linear-gradient(
+
+                135deg,
+
+                {NAVY},
+
+                #16365c
+
+            );
+
+            padding: 32px;
+
+            border-radius: 22px;
+
+            color: white;
+
+            margin-bottom: 25px;
+
+        }}
+
+
+        .masar-hero h1 {{
+
+            font-size: 36px;
+
+            margin: 0;
+
+            font-weight: 800;
+
+        }}
+
+
+        .masar-hero p {{
+
+            color: #cbd5e1;
+
+            margin-top: 8px;
+
+        }}
+
+
+        .metric-card {{
+
+            background: white;
+
+            border-radius: 18px;
+
+            padding: 22px;
+
+            border: 1px solid #e5e7eb;
+
+            box-shadow:
+
+            0 8px 30px rgba(15,23,42,0.06);
+
+        }}
+
+
+        .metric-label {{
+
+            color: {SLATE};
+
+            font-size: 12px;
+
+            text-transform: uppercase;
+
+            letter-spacing: 1px;
+
+        }}
+
+
+        .metric-value {{
+
+            color: {NAVY};
+
+            font-size: 30px;
+
+            font-weight: 800;
+
+            margin-top: 5px;
+
+        }}
+
+
+        .section-title {{
+
+            color: {NAVY};
+
+            font-size: 21px;
+
+            font-weight: 800;
+
+            margin-top: 30px;
+
+            margin-bottom: 12px;
+
+        }}
+
+
+        div.stButton > button {{
+
+            border-radius: 10px;
+
+            font-weight: 700;
+
+        }}
+
+        </style>
+
+        """,
+
+        unsafe_allow_html=True
+
+    )
+
+
+def metric_card(label, value):
+
+    st.markdown(
+
+        f"""
+
+        <div class="metric-card">
+
+            <div class="metric-label">
+
+                {label}
+
+            </div>
+
+            <div class="metric-value">
+
+                {value}
+
+            </div>
+
+        </div>
+
+        """,
+
+        unsafe_allow_html=True
+
+    )
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+def dashboard():
+
+    st.markdown(
+
+        """
+
+        <div class="masar-hero">
+
+            <h1>MASAR Executive Command Center</h1>
+
+            <p>
+
+            Business Development • Government Affairs • Public Relations
+
+            </p>
+
+        </div>
+
+        """,
+
+        unsafe_allow_html=True
+
+    )
+
+
+    companies = fetch(
+
+        "SELECT COUNT(*) AS count FROM companies"
+
+    ).iloc[0]["count"]
+
+
+    active_opportunities = fetch(
+
+        """
+
+        SELECT COUNT(*) AS count
+
+        FROM opportunities
+
+        WHERE stage NOT IN ('Won','Lost')
+
+        """
+
+    ).iloc[0]["count"]
+
+
+    pipeline = fetch(
+
+        """
+
+        SELECT
+
+        COALESCE(SUM(value),0) AS value
+
+        FROM opportunities
+
+        WHERE stage != 'Lost'
+
+        """
+
+    ).iloc[0]["value"]
+
+
+    weighted_pipeline = fetch(
+
+        """
+
+        SELECT
+
+        COALESCE(
+
+            SUM(value * probability / 100),
+
+            0
+
+        ) AS value
+
+        FROM opportunities
+
+        WHERE stage != 'Lost'
+
+        """
+
+    ).iloc[0]["value"]
+
+
+    followups = fetch(
+
+        """
+
+        SELECT COUNT(*) AS count
+
+        FROM followups
+
+        WHERE status = 'Open'
+
+        """
+
+    ).iloc[0]["count"]
+
+
+    cols = st.columns(5)
+
+
+    values = [
+
+        ("Companies", companies),
+
+        ("Active Opportunities", active_opportunities),
+
+        ("Pipeline Value", f"EGP {pipeline:,.0f}"),
+
+        ("Weighted Pipeline", f"EGP {weighted_pipeline:,.0f}"),
+
+        ("Open Follow-ups", followups),
+
     ]
 
-if not st.session_state.authenticated:
-    st.markdown('<div class="main-header">MASAR for Consultancy and Business Development</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Enterprise Management Suite - Secure Authentication Portal</div>', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([1.2, 1])
-    with col1:
-        with st.form("login_form"):
-            st.markdown("### Executive Login")
-            role_choice = st.selectbox("Select Role Designation", ["Founder", "CEO", "AMOM", "SSA", "GAA", "SGA", "SPM"])
-            username_input = st.text_input("Username")
-            password_input = st.text_input("Password", type="password")
-            submit_btn = st.form_submit_button("Authenticate Access")
-            
-            if submit_btn:
-                conn = sqlite3.connect("masar_comprehensive_v6.db")
-                cursor = conn.cursor()
-                cursor.execute("SELECT username, role_code, full_name FROM users WHERE role_code = ? AND username = ? AND password = ?", (role_choice, username_input, password_input))
-                user_res = cursor.fetchone()
-                conn.close()
-                
-                if user_res:
-                    st.session_state.authenticated = True
-                    st.session_state.username = user_res[0]
-                    st.session_state.role_code = user_res[1]
-                    st.session_state.full_name = user_res[2]
-                    st.rerun()
-                else:
-                    st.error("Authentication Failed: Incorrect username, password, or role match.")
-                    
-    with col2:
-        st.markdown("### System Credentials Reference")
-        st.markdown("""
-        * **Founder:** `founder_admin` | `MasarFnd2026!`
-        * **CEO:** `ceo_user` | `MasarCEO#88`
-        * **AMOM:** `amom_user` | `AmomOffice@2026`
-        * **SSA:** `ssa_user` | `SSA_Support*99`
-        * **GAA:** `gaa_user` | `GAA_Gov#55`
-        * **SGA:** `sga_user` | `SGA_Acc#33`
-        * **SPM:** `spm_user` | `SPM_Proj*77`
-        """)
-else:
-    cairo_tz = pytz.timezone('Africa/Cairo')
-    current_time = datetime.now(cairo_tz)
-    
-    st.sidebar.markdown("### MASAR ENTERPRISE")
-    st.sidebar.markdown("**Consultancy & Business Development**")
-    st.sidebar.markdown("---")
-    st.sidebar.markdown(f"**Date:** {current_time.strftime('%Y-%m-%d')}")
-    st.sidebar.markdown(f"**Time:** {current_time.strftime('%H:%M:%S')} (EET)")
-    st.sidebar.markdown("---")
-    st.sidebar.markdown(f"**Executive:** {st.session_state.full_name}")
-    st.sidebar.markdown(f"**Clearance:** {st.session_state.role_code}")
-    st.sidebar.markdown("---")
-    
-    page = st.sidebar.radio("Navigation Menu", ["Executive Dashboard", "Smart AI Chatbot", "Email Digest & Notifications", "CRM & Deal Pipeline", "Master Database & File Uploader", "Accounting Ledger (SGA)", "Task Management", "Management Control", "Profile"])
-    
-    if st.sidebar.button("Sign Out"):
-        st.session_state.authenticated = False
-        st.rerun()
-        
-    if page == "Executive Dashboard":
-        st.markdown(f'<div class="main-header">Executive Dashboard - {st.session_state.full_name}</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-header">Real-time enterprise metrics, active workflows, and corporate indicators.</div>', unsafe_allow_html=True)
-        
-        conn = sqlite3.connect("masar_comprehensive_v6.db")
-        df_crm = pd.read_sql_query("SELECT * FROM crm_deals", conn)
-        df_tasks = pd.read_sql_query("SELECT * FROM tasks", conn)
-        df_ledger = pd.read_sql_query("SELECT * FROM accounting_ledger", conn)
-        df_emails = pd.read_sql_query("SELECT * FROM email_digests", conn)
-        conn.close()
-        
-        c1, c2, c3, c4 = st.columns(4)
+
+    for col, (label, value) in zip(cols, values):
+
+        with col:
+
+            metric_card(label, value)
+
+
+    st.markdown(
+
+        '<div class="section-title">Opportunity Funnel</div>',
+
+        unsafe_allow_html=True
+
+    )
+
+
+    funnel = fetch(
+
+        """
+
+        SELECT
+
+            stage,
+
+            COUNT(*) AS opportunities,
+
+            COALESCE(SUM(value),0) AS value
+
+        FROM opportunities
+
+        GROUP BY stage
+
+        """
+
+    )
+
+
+    if not funnel.empty:
+
+        c1, c2 = st.columns(2)
+
+
         with c1:
-            st.metric(label="Active CRM Deals", value=len(df_crm))
+
+            fig = px.bar(
+
+                funnel,
+
+                x="stage",
+
+                y="opportunities",
+
+                text="opportunities",
+
+                template="plotly_white",
+
+                title="Opportunities by Stage"
+
+            )
+
+            st.plotly_chart(
+
+                fig,
+
+                use_container_width=True
+
+            )
+
+
         with c2:
-            st.metric(label="Pending Operations Tasks", value=len(df_tasks))
-        with c3:
-            total_rev = df_ledger[df_ledger['entry_type'] == 'Credit']['amount'].sum()
-            st.metric(label="Total Recorded Revenues", value=f"{total_rev:,.2f} EGP")
-        with c4:
-            st.metric(label="Email Digests Tracked", value=len(df_emails))
-            
-        st.markdown("---")
-        st.subheader("Periodic Summary & System Status")
-        st.success("All systems operating under strict corporate compliance. AI Bot and Email Notification modules are fully active.")
 
-    elif page == "Smart AI Chatbot":
-        st.markdown('<div class="main-header">MASAR Interactive AI Chatbot</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-header">Your intelligent corporate assistant. Ask anything about operations, client CRM, financial ledgers, or business strategies.</div>', unsafe_allow_html=True)
-        
-        # Display chat history
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-                
-        # Chat input box
-        if prompt := st.chat_input("اكتب سؤالك هنا للمساعد الذكي... (Type your query here...)"):
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-                
-            # Smart processing logic for chatbot
-            p_lower = prompt.lower()
-            conn = sqlite3.connect("masar_comprehensive_v6.db")
-            
-            if "crm" in p_lower or "deal" in p_lower or "صفقات" in p_lower or "عملاء" in p_lower:
-                df_c = pd.read_sql_query("SELECT client_name, deal_title, status, deal_value FROM crm_deals", conn)
-                response_text = "إليك ملخص صفقات الـ CRM الحالية في الشركة:\n\n" + df_c.to_markdown(index=False)
-            elif "account" in p_lower or "financial" in p_lower or "حسابات" in p_lower or "فلوس" in p_lower or "إيرادات" in p_lower:
-                df_l = pd.read_sql_query("SELECT * FROM accounting_ledger", conn)
-                response_text = "إليك سجل الحسابات والماليات (SGA):\n\n" + df_l.to_markdown(index=False)
-            elif "email" in p_lower or "إيميل" in p_lower or "رسائل" in p_lower:
-                df_e = pd.read_sql_query("SELECT sender, recipient_role, subject, summary FROM email_digests", conn)
-                response_text = "إليك آخر ملخصات البريد الإلكتروني والإشعارات للموظفين:\n\n" + df_e.to_markdown(index=False)
-            else:
-                response_text = f"بخصوص استفسارك ('{prompt}'): شركة مسار للاستشارات وتطوير الأعمال تعمل بكفاءة تامة. يمكنك استخدام الأقسام الجانبية للتحكم الكامل في الـ CRM، الحسابات، وقاعدة البيانات الموحدة."
-            
-            conn.close()
-            
-            st.session_state.messages.append({"role": "assistant", "content": response_text})
-            with st.chat_message("assistant"):
-                st.markdown(response_text)
+            fig = px.bar(
 
-    elif page == "Email Digest & Notifications":
-        st.markdown('<div class="main-header">Email Summaries & Employee Notifications</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-header">Automated ingestion of incoming correspondence, AI summaries, and targeted role notifications.</div>', unsafe_allow_html=True)
-        
-        conn = sqlite3.connect("masar_comprehensive_v6.db")
-        emails_df = pd.read_sql_query("SELECT * FROM email_digests", conn)
-        conn.close()
-        
-        st.subheader("Live Email Digest Feed")
-        st.dataframe(emails_df, use_container_width=True)
-        
-        # Export option
-        csv_emails = emails_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Download Email Summaries Sheet",
-            data=csv_emails,
-            file_name='masar_email_digests.csv',
-            mime='text/csv'
-        )
-        
-        st.markdown("---")
-        st.subheader("Add & Summarize New Email / Dispatch Notification")
-        with st.form("email_form"):
-            c1, c2 = st.columns(2)
-            with c1:
-                e_sender = st.text_input("Email Sender (e.g., client@domain.com)")
-                e_role = st.selectbox("Target Employee / Role Notification", ["Founder", "CEO", "AMOM", "SSA", "GAA", "SGA", "SPM"])
-            with c2:
-                e_subject = st.text_input("Email Subject")
-                e_date = st.text_input("Received Date (YYYY-MM-DD)", value=str(datetime.now(cairo_tz).date()))
-            e_summary = st.text_area("AI Email Summary & Action Notes")
-            e_submit = st.form_submit_button("Process and Dispatch Notification")
-            
-            if e_submit and e_sender:
-                conn = sqlite3.connect("masar_comprehensive_v6.db")
-                cursor = conn.cursor()
-                cursor.execute("INSERT INTO email_digests (sender, recipient_role, subject, summary, received_date) VALUES (?, ?, ?, ?, ?)",
-                               (e_sender, e_role, e_subject, e_summary, e_date))
-                conn.commit()
-                conn.close()
-                st.success("Email successfully summarized and notification dispatched to designated employee!")
-                st.rerun()
+                funnel,
 
-    elif page == "CRM & Deal Pipeline":
-        st.markdown('<div class="main-header">CRM & Deal Pipeline Intelligence</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-header">Manage client relationships, track opportunity statuses, and review automated CRM notifications.</div>', unsafe_allow_html=True)
-        
-        conn = sqlite3.connect("masar_comprehensive_v6.db")
-        crm_df = pd.read_sql_query("SELECT * FROM crm_deals", conn)
-        conn.close()
-        
-        # Smart Alerts Analysis for CRM
-        st.markdown("### Automated CRM Smart Alerts & Actionable Insights")
-        today_date = datetime.now(cairo_tz).date()
-        alert_count = 0
-        
-        for index, row in crm_df.iterrows():
-            last_dt = datetime.strptime(row['last_contact_date'], "%Y-%m-%d").date()
-            delta_days = (today_date - last_dt).days
-            
-            if row['status'] == 'Open' and delta_days > 20:
-                st.warning(f"Attention Required: Deal '{row['deal_title']}' with client '{row['client_name']}' has been Open with NO intervention for {delta_days} days!")
-                alert_count += 1
-            elif row['status'] == 'Pending':
-                st.info(f"Pending Status Notice: Deal '{row['deal_title']}' with '{row['client_name']}' is awaiting review (Last contact: {row['last_contact_date']}).")
-                alert_count += 1
-                
-        if alert_count == 0:
-            st.success("All active CRM deals are up to date with recent client interventions.")
-            
-        st.markdown("---")
-        st.subheader("Live CRM Database Sheet")
-        st.dataframe(crm_df, use_container_width=True)
-        
-        csv_data = crm_df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Download CRM Data Sheet (Excel Compatible)",
-            data=csv_data,
-            file_name='masar_crm_export.csv',
-            mime='text/csv',
-        )
-        
-        st.markdown("---")
-        st.subheader("Add / Update CRM Deal & Interaction")
-        with st.form("crm_form"):
+                x="stage",
+
+                y="value",
+
+                text="value",
+
+                template="plotly_white",
+
+                title="Pipeline Value by Stage"
+
+            )
+
+            st.plotly_chart(
+
+                fig,
+
+                use_container_width=True
+
+            )
+
+
+    st.markdown(
+
+        '<div class="section-title">Top Opportunities</div>',
+
+        unsafe_allow_html=True
+
+    )
+
+
+    top = fetch(
+
+        """
+
+        SELECT
+
+            companies.name AS Company,
+
+            opportunities.title AS Opportunity,
+
+            opportunities.stage AS Stage,
+
+            opportunities.value AS Value,
+
+            opportunities.probability AS Probability,
+
+            ROUND(
+
+                opportunities.value *
+
+                opportunities.probability / 100
+
+            ) AS Weighted_Value,
+
+            opportunities.next_action AS Next_Action
+
+        FROM opportunities
+
+        LEFT JOIN companies
+
+        ON companies.id = opportunities.company_id
+
+        ORDER BY Weighted_Value DESC
+
+        LIMIT 10
+
+        """
+
+    )
+
+
+    st.dataframe(
+
+        top,
+
+        use_container_width=True,
+
+        hide_index=True
+
+    )
+
+
+# ============================================================
+# CRM
+# ============================================================
+
+def crm():
+
+    st.title("🏢 CRM & Companies")
+
+
+    with st.expander("＋ Add New Company"):
+
+        with st.form("company_form"):
+
             col1, col2 = st.columns(2)
-            with col1:
-                c_name = st.text_input("Client Name")
-                d_title = st.text_input("Deal / Opportunity Title")
-                d_status = st.selectbox("Deal Status", ["Open", "Pending", "Closed-Won", "Closed-Lost"])
-            with col2:
-                d_val = st.number_input("Deal Value (EGP)", min_value=0.0, step=1000.0)
-                l_date = st.text_input("Last Contact Date (YYYY-MM-DD)", value=str(today_date))
-            d_notes = st.text_area("Deal Notes & Summary")
-            d_submit = st.form_submit_button("Commit CRM Record to Sheet")
-            
-            if d_submit and c_name:
-                conn = sqlite3.connect("masar_comprehensive_v6.db")
-                cursor = conn.cursor()
-                cursor.execute("INSERT INTO crm_deals (client_name, deal_title, status, deal_value, last_contact_date, notes) VALUES (?, ?, ?, ?, ?, ?)",
-                               (c_name, d_title, d_status, d_val, l_date, d_notes))
-                conn.commit()
-                conn.close()
-                st.success("CRM record successfully added and synced to sheet.")
-                st.rerun()
 
-    elif page == "Master Database & File Uploader":
-        st.markdown('<div class="main-header">Master Database & File Uploader</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-header">Upload custom files (Excel/CSV), search instantly, and add entries that sync on the fly.</div>', unsafe_allow_html=True)
-        
-        uploaded_file = st.file_uploader("Choose an Excel or CSV file", type=["csv", "xlsx"])
-        if uploaded_file is not None:
-            try:
-                if uploaded_file.name.endswith('.csv'):
-                    temp_df = pd.read_csv(uploaded_file)
+            name = col1.text_input(
+
+                "Company Name *"
+
+            )
+
+            industry = col2.text_input(
+
+                "Industry"
+
+            )
+
+            website = col1.text_input(
+
+                "Website"
+
+            )
+
+            phone = col2.text_input(
+
+                "Phone"
+
+            )
+
+            email = col1.text_input(
+
+                "Email"
+
+            )
+
+            status = col2.selectbox(
+
+                "Status",
+
+                [
+
+                    "Prospect",
+
+                    "Contacted",
+
+                    "Meeting",
+
+                    "Proposal",
+
+                    "Negotiation",
+
+                    "Won",
+
+                    "Lost",
+
+                    "On Hold"
+
+                ]
+
+            )
+
+            priority = col1.selectbox(
+
+                "Priority",
+
+                ["High","Medium","Low"]
+
+            )
+
+            notes = st.text_area(
+
+                "Notes"
+
+            )
+
+
+            submit = st.form_submit_button(
+
+                "Save Company"
+
+            )
+
+
+            if submit:
+
+                if not name.strip():
+
+                    st.error(
+
+                        "Company Name is required."
+
+                    )
+
                 else:
-                    temp_df = pd.read_excel(uploaded_file)
-                st.success(f"File '{uploaded_file.name}' uploaded successfully!")
-                st.dataframe(temp_df, use_container_width=True)
-            except Exception as e:
-                st.error(f"Error reading file: {e}")
 
-        st.markdown("---")
-        st.subheader("Instant Searchable Database")
-        
-        conn = sqlite3.connect("masar_comprehensive_v6.db")
-        master_df = pd.read_sql_query("SELECT * FROM uploaded_master_db", conn)
-        conn.close()
-        
-        search_query = st.text_input("Search Database (Enter name, category, or details):")
-        if search_query:
-            filtered_df = master_df[
-                master_df['record_name'].str.contains(search_query, case=False, na=False) |
-                master_df['category'].str.contains(search_query, case=False, na=False) |
-                master_df['details'].str.contains(search_query, case=False, na=False)
-            ]
-            st.dataframe(filtered_df, use_container_width=True)
-        else:
-            st.dataframe(master_df, use_container_width=True)
-            
-        st.markdown("---")
-        st.subheader("Add New Entity / Name Directly")
-        with st.form("master_add_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                m_name = st.text_input("Entity / Name")
-                m_cat = st.text_input("Category / Type")
-            with col2:
-                m_date = st.text_input("Date (YYYY-MM-DD)", value=str(datetime.now(cairo_tz).date()))
-            m_details = st.text_area("Details & Notes")
-            m_submit = st.form_submit_button("Add and Save to Database")
-            
-            if m_submit and m_name:
-                conn = sqlite3.connect("masar_comprehensive_v6.db")
-                cursor = conn.cursor()
-                cursor.execute("INSERT INTO uploaded_master_db (record_name, category, details, entry_date) VALUES (?, ?, ?, ?)",
-                               (m_name, m_cat, m_details, m_date))
-                conn.commit()
-                conn.close()
-                st.success("Name/Entity successfully added and updated in the system!")
-                st.rerun()
+                    execute(
 
-    elif page == "Accounting Ledger (SGA)":
-        st.markdown('<div class="main-header">Senior General Accountant Ledger (SGA)</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-header">Complete corporate financial tracking, revenues, expenses, and periodic summaries.</div>', unsafe_allow_html=True)
-        
-        conn = sqlite3.connect("masar_comprehensive_v6.db")
-        ledger_df = pd.read_sql_query("SELECT * FROM accounting_ledger", conn)
-        conn.close()
-        
-        st.dataframe(ledger_df, use_container_width=True)
-        
-        if st.session_state.role_code in ["Founder", "CEO", "SGA"]:
-            st.markdown("---")
-            st.subheader("Record Financial Transaction")
-            with st.form("ledger_form"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    t_date = st.text_input("Transaction Date (YYYY-MM-DD)", value=str(datetime.now(cairo_tz).date()))
-                    t_desc = st.text_input("Transaction Description")
-                with col2:
-                    t_cat = st.selectbox("Category", ["Revenue", "Expense", "Consultancy Fee", "Operational Cost"])
-                    t_amount = st.number_input("Amount (EGP)", min_value=0.0, step=100.0)
-                    t_type = st.selectbox("Entry Type", ["Credit", "Debit"])
-                t_submit = st.form_submit_button("Save Financial Entry")
-                
-                if t_submit and t_desc:
-                    conn = sqlite3.connect("masar_comprehensive_v6.db")
-                    cursor = conn.cursor()
-                    cursor.execute("INSERT INTO accounting_ledger (transaction_date, description, category, amount, entry_type) VALUES (?, ?, ?, ?, ?)",
-                                   (t_date, t_desc, t_cat, t_amount, t_type))
-                    conn.commit()
-                    conn.close()
-                    st.success("Transaction successfully posted to the SGA ledger.")
+                        """
+
+                        INSERT INTO companies
+
+                        (
+
+                            name,
+
+                            industry,
+
+                            website,
+
+                            phone,
+
+                            email,
+
+                            status,
+
+                            priority,
+
+                            notes
+
+                        )
+
+                        VALUES (?,?,?,?,?,?,?,?)
+
+                        """,
+
+                        (
+
+                            name,
+
+                            industry,
+
+                            website,
+
+                            phone,
+
+                            email,
+
+                            status,
+
+                            priority,
+
+                            notes
+
+                        )
+
+                    )
+
+                    st.success(
+
+                        "Company added successfully."
+
+                    )
+
                     st.rerun()
-        else:
-            st.info("Financial entry rights are restricted to SGA, Founder, and CEO designations.")
 
-    elif page == "Task Management":
-        st.markdown('<div class="main-header">Task & Operations Manager</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-header">Delegate, monitor, and track department deliverables.</div>', unsafe_allow_html=True)
-        
-        conn = sqlite3.connect("masar_comprehensive_v6.db")
-        tasks_df = pd.read_sql_query("SELECT * FROM tasks", conn)
-        conn.close()
-        
-        if not tasks_df.empty:
-            st.dataframe(tasks_df, use_container_width=True)
+
+    search = st.text_input(
+
+        "🔎 Search companies"
+
+    )
+
+
+    companies = fetch(
+
+        """
+
+        SELECT *
+
+        FROM companies
+
+        WHERE name LIKE ?
+
+        ORDER BY id DESC
+
+        """,
+
+        (f"%{search}%",)
+
+    )
+
+
+    st.dataframe(
+
+        companies,
+
+        use_container_width=True,
+
+        hide_index=True
+
+    )
+
+
+# ============================================================
+# PIPELINE
+# ============================================================
+
+def pipeline():
+
+    st.title("🎯 Business Development Pipeline")
+
+
+    companies = fetch(
+
+        "SELECT id,name FROM companies ORDER BY name"
+
+    )
+
+
+    if companies.empty:
+
+        st.info(
+
+            "Add companies in CRM first."
+
+        )
+
+        return
+
+
+    company_map = dict(
+
+        zip(
+
+            companies["name"],
+
+            companies["id"]
+
+        )
+
+    )
+
+
+    with st.expander("＋ Add Opportunity"):
+
+        with st.form("opportunity_form"):
+
+            c1, c2 = st.columns(2)
+
+
+            company = c1.selectbox(
+
+                "Company",
+
+                list(company_map.keys())
+
+            )
+
+
+            title = c2.text_input(
+
+                "Opportunity Title *"
+
+            )
+
+
+            stage = c1.selectbox(
+
+                "Stage",
+
+                [
+
+                    "Lead",
+
+                    "Contacted",
+
+                    "Meeting",
+
+                    "Proposal",
+
+                    "Negotiation",
+
+                    "Won",
+
+                    "Lost"
+
+                ]
+
+            )
+
+
+            value = c2.number_input(
+
+                "Opportunity Value (EGP)",
+
+                min_value=0.0,
+
+                step=1000.0
+
+            )
+
+
+            probability = c1.slider(
+
+                "Probability %",
+
+                0,
+
+                100,
+
+                50
+
+            )
+
+
+            next_date = c2.date_input(
+
+                "Next Action Date"
+
+            )
+
+
+            next_action = c1.text_input(
+
+                "Next Action"
+
+            )
+
+
+            notes = st.text_area(
+
+                "Notes"
+
+            )
+
+
+            submit = st.form_submit_button(
+
+                "Save Opportunity"
+
+            )
+
+
+            if submit:
+
+                if not title.strip():
+
+                    st.error(
+
+                        "Opportunity title is required."
+
+                    )
+
+                else:
+
+                    execute(
+
+                        """
+
+                        INSERT INTO opportunities
+
+                        (
+
+                            company_id,
+
+                            title,
+
+                            stage,
+
+                            value,
+
+                            probability,
+
+                            next_action,
+
+                            next_date,
+
+                            notes
+
+                        )
+
+                        VALUES (?,?,?,?,?,?,?,?)
+
+                        """,
+
+                        (
+
+                            company_map[company],
+
+                            title,
+
+                            stage,
+
+                            value,
+
+                            probability,
+
+                            next_action,
+
+                            str(next_date),
+
+                            notes
+
+                        )
+
+                    )
+
+
+                    st.success(
+
+                        "Opportunity created."
+
+                    )
+
+                    st.rerun()
+
+
+    data = fetch(
+
+        """
+
+        SELECT
+
+            opportunities.id,
+
+            companies.name AS Company,
+
+            opportunities.title AS Opportunity,
+
+            opportunities.stage AS Stage,
+
+            opportunities.value AS Value,
+
+            opportunities.probability AS Probability,
+
+            ROUND(
+
+                opportunities.value *
+
+                opportunities.probability / 100
+
+            ) AS Weighted_Value,
+
+            opportunities.next_action AS Next_Action,
+
+            opportunities.next_date AS Next_Date
+
+        FROM opportunities
+
+        LEFT JOIN companies
+
+        ON companies.id = opportunities.company_id
+
+        ORDER BY Weighted_Value DESC
+
+        """
+
+    )
+
+
+    st.dataframe(
+
+        data,
+
+        use_container_width=True,
+
+        hide_index=True
+
+    )
+
+
+# ============================================================
+# FOLLOW UPS
+# ============================================================
+
+def followups():
+
+    st.title("📞 Follow-ups & Tasks")
+
+
+    companies = fetch(
+
+        "SELECT id,name FROM companies ORDER BY name"
+
+    )
+
+
+    if not companies.empty:
+
+        company_map = dict(
+
+            zip(
+
+                companies["name"],
+
+                companies["id"]
+
+            )
+
+        )
+
+
+        with st.expander("＋ Add Follow-up"):
+
+            with st.form("followup_form"):
+
+                company = st.selectbox(
+
+                    "Company",
+
+                    list(company_map.keys())
+
+                )
+
+
+                title = st.text_input(
+
+                    "Task / Follow-up *"
+
+                )
+
+
+                due = st.date_input(
+
+                    "Due Date"
+
+                )
+
+
+                priority = st.selectbox(
+
+                    "Priority",
+
+                    [
+
+                        "High",
+
+                        "Medium",
+
+                        "Low"
+
+                    ]
+
+                )
+
+
+                notes = st.text_area(
+
+                    "Notes"
+
+                )
+
+
+                submit = st.form_submit_button(
+
+                    "Save Follow-up"
+
+                )
+
+
+                if submit:
+
+                    execute(
+
+                        """
+
+                        INSERT INTO followups
+
+                        (
+
+                            company_id,
+
+                            title,
+
+                            due_date,
+
+                            priority,
+
+                            notes
+
+                        )
+
+                        VALUES (?,?,?,?,?)
+
+                        """,
+
+                        (
+
+                            company_map[company],
+
+                            title,
+
+                            str(due),
+
+                            priority,
+
+                            notes
+
+                        )
+
+                    )
+
+
+                    st.success(
+
+                        "Follow-up added."
+
+                    )
+
+                    st.rerun()
+
+
+    data = fetch(
+
+        """
+
+        SELECT
+
+            followups.id,
+
+            companies.name AS Company,
+
+            followups.title AS Task,
+
+            followups.due_date AS Due_Date,
+
+            followups.status AS Status,
+
+            followups.priority AS Priority,
+
+            followups.notes AS Notes
+
+        FROM followups
+
+        LEFT JOIN companies
+
+        ON companies.id = followups.company_id
+
+        ORDER BY followups.due_date
+
+        """
+
+    )
+
+
+    st.dataframe(
+
+        data,
+
+        use_container_width=True,
+
+        hide_index=True
+
+    )
+
+
+# ============================================================
+# INTELLIGENCE CENTER
+# ============================================================
+
+def intelligence():
+
+    st.title("🧠 Intelligence Center")
+
+
+    st.markdown(
+
+        """
+
+        ### Company Intelligence Workspace
+
+        Use this area to prepare a structured research brief
+
+        before meetings and business development activities.
+
+        """
+
+    )
+
+
+    company = st.text_input(
+
+        "Company Name"
+
+    )
+
+
+    website = st.text_input(
+
+        "Website"
+
+    )
+
+
+    if st.button(
+
+        "🚀 Run Intelligence Analysis",
+
+        type="primary"
+
+    ):
+
+        if not company and not website:
+
+            st.warning(
+
+                "Enter a company name or website."
+
+            )
+
         else:
-            st.info("No active operational tasks recorded.")
-            
-        st.markdown("---")
-        st.subheader("Create & Delegate Task")
-        with st.form("task_form"):
-            t1, t2 = st.columns(2)
-            with t1:
-                t_title = st.text_input("Task Description / Objective")
-                t_assignee = st.selectbox("Assign To Role", ["Founder", "CEO", "AMOM", "SSA", "GAA", "SGA", "SPM"])
-            with t2:
-                t_priority = st.selectbox("Priority Level", ["Normal", "High", "Critical"])
-                t_deadline = st.text_input("Deadline Target (YYYY-MM-DD)")
-            t_submit = st.form_submit_button("Authorize Task Assignment")
-            
-            if t_submit and t_title:
-                conn = sqlite3.connect("masar_comprehensive_v6.db")
-                cursor = conn.cursor()
-                cursor.execute("INSERT INTO tasks (task_title, assigned_to, priority, status, deadline) VALUES (?, ?, ?, ?, ?)",
-                               (t_title, t_assignee, t_priority, "Pending", t_deadline))
-                conn.commit()
-                conn.close()
-                st.success("Task successfully dispatched.")
+
+            st.session_state["intel_company"] = (
+
+                company or website
+
+            )
+
+            st.session_state["intel_website"] = website
+
+            st.success(
+
+                "Intelligence workspace created."
+
+            )
+
+
+    if "intel_company" in st.session_state:
+
+        company = st.session_state["intel_company"]
+
+        website = st.session_state["intel_website"]
+
+
+        st.divider()
+
+
+        st.subheader(
+
+            f"🎯 {company}"
+
+        )
+
+
+        tabs = st.tabs(
+
+            [
+
+                "Company Snapshot",
+
+                "Services",
+
+                "Market Position",
+
+                "MASAR Opportunities",
+
+                "Risks",
+
+                "Meeting Brief"
+
+            ]
+
+        )
+
+
+        with tabs[0]:
+
+            st.text_area(
+
+                "Company Overview",
+
+                height=180,
+
+                placeholder=
+
+                "Paste verified company information here..."
+
+            )
+
+
+        with tabs[1]:
+
+            st.text_area(
+
+                "Services / Capabilities",
+
+                height=180
+
+            )
+
+
+        with tabs[2]:
+
+            st.text_area(
+
+                "Market Position / Competitors",
+
+                height=180
+
+            )
+
+
+        with tabs[3]:
+
+            st.markdown(
+
+                "### MASAR Opportunity Map"
+
+            )
+
+
+            a,b,c,d = st.columns(4)
+
+
+            with a:
+
+                st.checkbox(
+
+                    "Government Affairs"
+
+                )
+
+
+            with b:
+
+                st.checkbox(
+
+                    "Public Relations"
+
+                )
+
+
+            with c:
+
+                st.checkbox(
+
+                    "Business Development"
+
+                )
+
+
+            with d:
+
+                st.checkbox(
+
+                    "Stakeholder Management"
+
+                )
+
+
+            st.text_area(
+
+                "Opportunity Rationale",
+
+                height=160
+
+            )
+
+
+        with tabs[4]:
+
+            st.text_area(
+
+                "Risks / Red Flags",
+
+                height=160
+
+            )
+
+
+        with tabs[5]:
+
+            st.text_area(
+
+                "Meeting Objectives",
+
+                height=120
+
+            )
+
+
+            st.text_area(
+
+                "Key Questions",
+
+                height=160
+
+            )
+
+
+            st.text_area(
+
+                "Recommended Talking Points",
+
+                height=160
+
+            )
+
+
+# ============================================================
+# GOVERNANCE
+# ============================================================
+
+def governance():
+
+    st.title("⚖️ Governance")
+
+
+    with st.expander("＋ Add Governance Item"):
+
+        with st.form("governance_form"):
+
+            c1,c2 = st.columns(2)
+
+
+            item_type = c1.selectbox(
+
+                "Type",
+
+                [
+
+                    "Job Description",
+
+                    "Procedure",
+
+                    "Policy"
+
+                ]
+
+            )
+
+
+            title = c2.text_input(
+
+                "Title *"
+
+            )
+
+
+            owner = c1.text_input(
+
+                "Owner"
+
+            )
+
+
+            approval = c2.date_input(
+
+                "Approval Date"
+
+            )
+
+
+            review = c1.date_input(
+
+                "Next Review Date"
+
+            )
+
+
+            status = c2.selectbox(
+
+                "Status",
+
+                [
+
+                    "Active",
+
+                    "Draft",
+
+                    "Under Review",
+
+                    "Archived"
+
+                ]
+
+            )
+
+
+            notes = st.text_area(
+
+                "Notes"
+
+            )
+
+
+            submit = st.form_submit_button(
+
+                "Save"
+
+            )
+
+
+            if submit:
+
+                execute(
+
+                    """
+
+                    INSERT INTO governance
+
+                    (
+
+                        item_type,
+
+                        title,
+
+                        owner,
+
+                        approval_date,
+
+                        review_date,
+
+                        status,
+
+                        notes
+
+                    )
+
+                    VALUES (?,?,?,?,?,?,?)
+
+                    """,
+
+                    (
+
+                        item_type,
+
+                        title,
+
+                        owner,
+
+                        str(approval),
+
+                        str(review),
+
+                        status,
+
+                        notes
+
+                    )
+
+                )
+
+
+                st.success(
+
+                    "Governance item saved."
+
+                )
+
                 st.rerun()
 
-    elif page == "Management Control":
-        if st.session_state.role_code in ["Founder", "CEO"]:
-            st.markdown('<div class="main-header">Executive Administration Control Panel</div>', unsafe_allow_html=True)
-            st.markdown('<div class="sub-header">Manage corporate directory and user clearance levels.</div>', unsafe_allow_html=True)
-            
-            conn = sqlite3.connect("masar_comprehensive_v6.db")
-            users_df = pd.read_sql_query("SELECT role_code AS 'Role Code', username AS 'Username', full_name AS 'Full Name', department AS 'Department', email AS 'Email' FROM users", conn)
-            conn.close()
-            st.dataframe(users_df, use_container_width=True)
-        else:
-            st.error("Access Denied: Executive-level clearance (Founder / CEO) required for Management Control.")
 
-    elif page == "Profile":
-        st.markdown('<div class="main-header">Executive Profile Details</div>', unsafe_allow_html=True)
-        st.markdown(f"**Username:** `{st.session_state.username}`")
-        st.markdown(f"**Full Name:** {st.session_state.full_name}")
-        st.markdown(f"**Designation / Role Code:** {st.session_state.role_code}")
-        st.markdown(f"**Access Status:** Fully Authenticated & Operational")
+    data = fetch(
+
+        """
+
+        SELECT *
+
+        FROM governance
+
+        ORDER BY review_date
+
+        """
+
+    )
+
+
+    st.dataframe(
+
+        data,
+
+        use_container_width=True,
+
+        hide_index=True
+
+    )
+
+
+# ============================================================
+# APP
+# ============================================================
+
+init_database()
+
+inject_css()
+
+
+with st.sidebar:
+
+    st.markdown(
+
+        """
+
+        <h1 style="letter-spacing:3px;">
+
+        MASAR
+
+        </h1>
+
+        <small>
+
+        INTELLIGENCE OS
+
+        </small>
+
+        """,
+
+        unsafe_allow_html=True
+
+    )
+
+
+    st.divider()
+
+
+    page = st.radio(
+
+        "Navigation",
+
+        [
+
+            "Executive Dashboard",
+
+            "CRM & Companies",
+
+            "Pipeline",
+
+            "Follow-ups",
+
+            "Intelligence Center",
+
+            "Governance"
+
+        ]
+
+    )
+
+
+    st.divider()
+
+
+    st.caption(
+
+        "FOR CONSULTANCY AND BUSINESS DEVELOPMENT"
+
+    )
+
+
+if page == "Executive Dashboard":
+
+    dashboard()
+
+elif page == "CRM & Companies":
+
+    crm()
+
+elif page == "Pipeline":
+
+    pipeline()
+
+elif page == "Follow-ups":
+
+    followups()
+
+elif page == "Intelligence Center":
+
+    intelligence()
+
+elif page == "Governance":
+
+    governance()
