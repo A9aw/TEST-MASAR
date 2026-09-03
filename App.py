@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 
 st.set_page_config(
@@ -45,7 +45,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def init_db():
-    conn = sqlite3.connect("masar_comprehensive_v4.db")
+    conn = sqlite3.connect("masar_comprehensive_v5.db")
     cursor = conn.cursor()
     
     # Users Table
@@ -95,7 +95,25 @@ def init_db():
         ]
         cursor.executemany("INSERT INTO crm_deals (client_name, deal_title, status, deal_value, last_contact_date, notes) VALUES (?, ?, ?, ?, ?, ?)", default_deals)
 
-    # Accounting Transactions Table (SGA)
+    # Master Uploaded Database Table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS uploaded_master_db (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            record_name TEXT,
+            category TEXT,
+            details TEXT,
+            entry_date TEXT
+        )
+    """)
+    cursor.execute("SELECT COUNT(*) FROM uploaded_master_db")
+    if cursor.fetchone()[0] == 0:
+        default_master = [
+            ('Strategic Partner Alpha', 'Partnership', 'Primary regional coordinator', '2026-01-10'),
+            ('Government Liaison Unit', 'Government', 'Compliance and licensing division', '2026-02-15')
+        ]
+        cursor.executemany("INSERT INTO uploaded_master_db (record_name, category, details, entry_date) VALUES (?, ?, ?, ?)", default_master)
+
+    # Accounting Ledger (SGA)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS accounting_ledger (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,7 +169,7 @@ if not st.session_state.authenticated:
             submit_btn = st.form_submit_button("Authenticate Access")
             
             if submit_btn:
-                conn = sqlite3.connect("masar_comprehensive_v4.db")
+                conn = sqlite3.connect("masar_comprehensive_v5.db")
                 cursor = conn.cursor()
                 cursor.execute("SELECT username, role_code, full_name FROM users WHERE role_code = ? AND username = ? AND password = ?", (role_choice, username_input, password_input))
                 user_res = cursor.fetchone()
@@ -178,23 +196,20 @@ if not st.session_state.authenticated:
         * **SPM:** `spm_user` | `SPM_Proj*77`
         """)
 else:
-    # Sidebar Header & Logo Representation
+    cairo_tz = pytz.timezone('Africa/Cairo')
+    current_time = datetime.now(cairo_tz)
+    
     st.sidebar.markdown("### MASAR ENTERPRISE")
     st.sidebar.markdown("**Consultancy & Business Development**")
     st.sidebar.markdown("---")
-    
-    # Live Clock & Calendar Widget
-    cairo_tz = pytz.timezone('Africa/Cairo')
-    current_time = datetime.now(cairo_tz)
     st.sidebar.markdown(f"**Date:** {current_time.strftime('%Y-%m-%d')}")
     st.sidebar.markdown(f"**Time:** {current_time.strftime('%H:%M:%S')} (EET)")
     st.sidebar.markdown("---")
-    
     st.sidebar.markdown(f"**Executive:** {st.session_state.full_name}")
     st.sidebar.markdown(f"**Clearance:** {st.session_state.role_code}")
     st.sidebar.markdown("---")
     
-    page = st.sidebar.radio("Navigation Menu", ["Executive Dashboard", "CRM & Deal Pipeline", "Accounting Ledger (SGA)", "Task Management", "Smart Assistant", "Management Control", "Profile"])
+    page = st.sidebar.radio("Navigation Menu", ["Executive Dashboard", "CRM & Deal Pipeline", "Master Database & File Uploader", "Accounting Ledger (SGA)", "Task Management", "Smart Assistant", "Management Control", "Profile"])
     
     if st.sidebar.button("Sign Out"):
         st.session_state.authenticated = False
@@ -204,7 +219,7 @@ else:
         st.markdown(f'<div class="main-header">Executive Dashboard - {st.session_state.full_name}</div>', unsafe_allow_html=True)
         st.markdown('<div class="sub-header">Real-time enterprise metrics, active workflows, and corporate indicators.</div>', unsafe_allow_html=True)
         
-        conn = sqlite3.connect("masar_comprehensive_v4.db")
+        conn = sqlite3.connect("masar_comprehensive_v5.db")
         df_crm = pd.read_sql_query("SELECT * FROM crm_deals", conn)
         df_tasks = pd.read_sql_query("SELECT * FROM tasks", conn)
         df_ledger = pd.read_sql_query("SELECT * FROM accounting_ledger", conn)
@@ -221,13 +236,13 @@ else:
             
         st.markdown("---")
         st.subheader("Periodic Summary & System Status")
-        st.success("All systems operating under strict corporate compliance. Financial and CRM ledgers are fully synchronized.")
+        st.success("All systems operating under strict corporate compliance. CRM data streams directly to internal data sheets.")
 
     elif page == "CRM & Deal Pipeline":
         st.markdown('<div class="main-header">CRM & Deal Pipeline Intelligence</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sub-header">Manage client relationships, track opportunity statuses, and review automated alerts.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-header">Manage client relationships, track opportunity statuses, and review automated CRM notifications.</div>', unsafe_allow_html=True)
         
-        conn = sqlite3.connect("masar_comprehensive_v4.db")
+        conn = sqlite3.connect("masar_comprehensive_v5.db")
         crm_df = pd.read_sql_query("SELECT * FROM crm_deals", conn)
         conn.close()
         
@@ -251,8 +266,17 @@ else:
             st.success("All active CRM deals are up to date with recent client interventions.")
             
         st.markdown("---")
-        st.subheader("Current Deal Pipeline Database")
+        st.subheader("Live CRM Database Sheet")
         st.dataframe(crm_df, use_container_width=True)
+        
+        # Export option to Excel/CSV format
+        csv_data = crm_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Download CRM Data Sheet (CSV/Excel Compatible)",
+            data=csv_data,
+            file_name='masar_crm_export.csv',
+            mime='text/csv',
+        )
         
         st.markdown("---")
         st.subheader("Add / Update CRM Deal & Interaction")
@@ -266,23 +290,81 @@ else:
                 d_val = st.number_input("Deal Value (EGP)", min_value=0.0, step=1000.0)
                 l_date = st.text_input("Last Contact Date (YYYY-MM-DD)", value=str(today_date))
             d_notes = st.text_area("Deal Notes & Summary")
-            d_submit = st.form_submit_button("Commit CRM Record")
+            d_submit = st.form_submit_button("Commit CRM Record to Sheet")
             
             if d_submit and c_name:
-                conn = sqlite3.connect("masar_comprehensive_v4.db")
+                conn = sqlite3.connect("masar_comprehensive_v5.db")
                 cursor = conn.cursor()
                 cursor.execute("INSERT INTO crm_deals (client_name, deal_title, status, deal_value, last_contact_date, notes) VALUES (?, ?, ?, ?, ?, ?)",
                                (c_name, d_title, d_status, d_val, l_date, d_notes))
                 conn.commit()
                 conn.close()
-                st.success("CRM record successfully updated.")
+                st.success("CRM record successfully added and synced to sheet.")
+                st.rerun()
+
+    elif page == "Master Database & File Uploader":
+        st.markdown('<div class="main-header">Master Database & File Uploader</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-header">Upload custom files (Excel/CSV), search instantly, and add entries that sync on the fly.</div>', unsafe_allow_html=True)
+        
+        # File Uploader Section
+        st.markdown("### Upload External File / Database Sheet")
+        uploaded_file = st.file_uploader("Choose an Excel or CSV file", type=["csv", "xlsx"])
+        if uploaded_file is not None:
+            try:
+                if uploaded_file.name.endswith('.csv'):
+                    temp_df = pd.read_csv(uploaded_file)
+                else:
+                    temp_df = pd.read_excel(uploaded_file)
+                st.success(f"File '{uploaded_file.name}' uploaded successfully!")
+                st.dataframe(temp_df, use_container_width=True)
+            except Exception as e:
+                st.error(f"Error reading file: {e}")
+
+        st.markdown("---")
+        st.subheader("Instant Searchable Database")
+        
+        conn = sqlite3.connect("masar_comprehensive_v5.db")
+        master_df = pd.read_sql_query("SELECT * FROM uploaded_master_db", conn)
+        conn.close()
+        
+        search_query = st.text_input("Search Database (Enter name, category, or details):")
+        if search_query:
+            filtered_df = master_df[
+                master_df['record_name'].str.contains(search_query, case=False, na=False) |
+                master_df['category'].str.contains(search_query, case=False, na=False) |
+                master_df['details'].str.contains(search_query, case=False, na=False)
+            ]
+            st.dataframe(filtered_df, use_container_width=True)
+        else:
+            st.dataframe(master_df, use_container_width=True)
+            
+        st.markdown("---")
+        st.subheader("Add New Entity / Name Directly")
+        with st.form("master_add_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                m_name = st.text_input("Entity / Name")
+                m_cat = st.text_input("Category / Type")
+            with col2:
+                m_date = st.text_input("Date (YYYY-MM-DD)", value=str(datetime.now(cairo_tz).date()))
+            m_details = st.text_area("Details & Notes")
+            m_submit = st.form_submit_button("Add and Save to Database")
+            
+            if m_submit and m_name:
+                conn = sqlite3.connect("masar_comprehensive_v5.db")
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO uploaded_master_db (record_name, category, details, entry_date) VALUES (?, ?, ?, ?)",
+                               (m_name, m_cat, m_details, m_date))
+                conn.commit()
+                conn.close()
+                st.success("Name/Entity successfully added and updated in the system!")
                 st.rerun()
 
     elif page == "Accounting Ledger (SGA)":
         st.markdown('<div class="main-header">Senior General Accountant Ledger (SGA)</div>', unsafe_allow_html=True)
         st.markdown('<div class="sub-header">Complete corporate financial tracking, revenues, expenses, and periodic summaries.</div>', unsafe_allow_html=True)
         
-        conn = sqlite3.connect("masar_comprehensive_v4.db")
+        conn = sqlite3.connect("masar_comprehensive_v5.db")
         ledger_df = pd.read_sql_query("SELECT * FROM accounting_ledger", conn)
         conn.close()
         
@@ -303,7 +385,7 @@ else:
                 t_submit = st.form_submit_button("Save Financial Entry")
                 
                 if t_submit and t_desc:
-                    conn = sqlite3.connect("masar_comprehensive_v4.db")
+                    conn = sqlite3.connect("masar_comprehensive_v5.db")
                     cursor = conn.cursor()
                     cursor.execute("INSERT INTO accounting_ledger (transaction_date, description, category, amount, entry_type) VALUES (?, ?, ?, ?, ?)",
                                    (t_date, t_desc, t_cat, t_amount, t_type))
@@ -318,7 +400,7 @@ else:
         st.markdown('<div class="main-header">Task & Operations Manager</div>', unsafe_allow_html=True)
         st.markdown('<div class="sub-header">Delegate, monitor, and track department deliverables.</div>', unsafe_allow_html=True)
         
-        conn = sqlite3.connect("masar_comprehensive_v4.db")
+        conn = sqlite3.connect("masar_comprehensive_v5.db")
         tasks_df = pd.read_sql_query("SELECT * FROM tasks", conn)
         conn.close()
         
@@ -340,7 +422,7 @@ else:
             t_submit = st.form_submit_button("Authorize Task Assignment")
             
             if t_submit and t_title:
-                conn = sqlite3.connect("masar_comprehensive_v4.db")
+                conn = sqlite3.connect("masar_comprehensive_v5.db")
                 cursor = conn.cursor()
                 cursor.execute("INSERT INTO tasks (task_title, assigned_to, priority, status, deadline) VALUES (?, ?, ?, ?, ?)",
                                (t_title, t_assignee, t_priority, "Pending", t_deadline))
@@ -357,7 +439,7 @@ else:
         if st.button("Query Assistant"):
             if query:
                 q_lower = query.lower()
-                conn = sqlite3.connect("masar_comprehensive_v4.db")
+                conn = sqlite3.connect("masar_comprehensive_v5.db")
                 if "crm" in q_lower or "deal" in q_lower or "client" in q_lower:
                     df_c = pd.read_sql_query("SELECT client_name, deal_title, status FROM crm_deals", conn)
                     st.success("Assistant Analysis on CRM Pipeline:")
@@ -367,7 +449,7 @@ else:
                     st.success("Assistant Analysis on Financial Ledger:")
                     st.dataframe(df_l, use_container_width=True)
                 else:
-                    st.info(f"Assistant Report regarding '{query}': MASAR for Consultancy and Business Development maintains high structural integrity across all departments, including active CRM tracking, SGA financial oversight, and multi-tier role management.")
+                    st.info(f"Assistant Report regarding '{query}': MASAR for Consultancy and Business Development maintains high structural integrity across all departments, including active CRM tracking, SGA financial oversight, and file upload capabilities.")
                 conn.close()
             else:
                 st.warning("Please enter a valid query string.")
@@ -377,7 +459,7 @@ else:
             st.markdown('<div class="main-header">Executive Administration Control Panel</div>', unsafe_allow_html=True)
             st.markdown('<div class="sub-header">Manage corporate directory and user clearance levels.</div>', unsafe_allow_html=True)
             
-            conn = sqlite3.connect("masar_comprehensive_v4.db")
+            conn = sqlite3.connect("masar_comprehensive_v5.db")
             users_df = pd.read_sql_query("SELECT role_code AS 'Role Code', username AS 'Username', full_name AS 'Full Name', department AS 'Department', email AS 'Email' FROM users", conn)
             conn.close()
             st.dataframe(users_df, use_container_width=True)
